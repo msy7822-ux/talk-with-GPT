@@ -1,4 +1,5 @@
 import { env } from "./env.ts";
+import * as mod from "https://deno.land/std@0.184.0/streams/write_all.ts";
 
 export const fetchApi = async (opt: { prompt: string; modelName?: string }) => {
   const body = {
@@ -30,6 +31,41 @@ export const fetchApi = async (opt: { prompt: string; modelName?: string }) => {
   return res;
   // const json = await res.json();
   // return json.choices[0].message.content;
+};
+
+export const readeMessage = async (prompt: string) => {
+  const res = await fetchApi({ prompt });
+
+  const reader = res?.body?.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  const read = async (): Promise<Uint8Array | null> => {
+    const res = await reader?.read();
+    if (!res) return null;
+
+    const { done, value } = res;
+
+    if (done) return null;
+
+    const chunks = decoder
+      .decode(value)
+      .split("data: ")
+      .map((str) => (str === "[DONE]\n\n" ? undefined : str))
+      .filter((str) => !!str)
+      .map((str) => JSON.parse(str as string));
+
+    chunks.forEach(async (chunk) => {
+      await mod.writeAll(
+        Deno.stdout,
+        encoder.encode(chunk.choices[0].delta.content)
+      );
+      // console.log(chunk.choices[0].delta.content);
+    });
+    return read();
+  };
+
+  return await read();
 };
 
 type Prompt = {
